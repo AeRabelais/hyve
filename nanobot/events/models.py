@@ -34,8 +34,7 @@ class EventType(str, Enum):
     # Memory — emitted by the layered memory system (distiller, generator)
     MEMORY_WRITTEN = "memory.written"
 
-    # Scheduling
-    # TODO(Phase 2): Emit from HeartbeatService and CronService
+    # Scheduling — emitted by HeartbeatService and CronService
     HEARTBEAT_CHECKED = "heartbeat.checked"
     CRON_TRIGGERED = "cron.triggered"
 
@@ -88,3 +87,27 @@ class ChainCheckpointPayload(BaseModel):
     state: dict[str, Any]  # Current state snapshot
     expected_outcome: Optional[str] = None
     files_modified: list[str] = Field(default_factory=list)
+
+
+class HeartbeatPayload(BaseModel):
+    """Payload for heartbeat.checked events."""
+
+    action: str  # "skip" or "run"
+    tasks: str = ""  # Summary of tasks (when action=run)
+    had_content: bool = True  # Whether HEARTBEAT.md existed and had content
+    duration_ms: Optional[float] = None
+    error: Optional[str] = None
+
+
+class CronTriggeredPayload(BaseModel):
+    """Payload for cron.triggered events."""
+
+    job_id: str
+    job_name: str
+    schedule_kind: str  # "at", "every", or "cron"
+    message: str = ""
+    status: str = "ok"  # "ok" or "error"
+    error: Optional[str] = None
+    duration_ms: Optional[float] = None
+    deliver: bool = False
+    channel: Optional[str] = None

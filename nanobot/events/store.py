@@ -46,6 +46,8 @@ class EventStore:
         # ── Derived state (rebuilt from events on startup) ──
         self.active_agents: dict[str, AgentState] = {}
         self.active_chains: dict[str, ChainState] = {}
+        self.last_heartbeat: HeartbeatState | None = None
+        self.cron_jobs: dict[str, CronJobState] = {}
         # TODO(Phase 5): Add task_board derived state for dashboard Kanban view
         # self.task_board: dict[str, TaskState] = {}
 
@@ -121,6 +123,27 @@ class EventStore:
             if state := self.active_agents.get(event.agent_id):
                 state.total_tokens += event.payload.get("input_tokens", 0)
                 state.total_tokens += event.payload.get("output_tokens", 0)
+
+        # Heartbeat tracking
+        elif et == EventType.HEARTBEAT_CHECKED:
+            self.last_heartbeat = HeartbeatState(
+                action=event.payload.get("action", "skip"),
+                checked_at=event.timestamp,
+                had_content=event.payload.get("had_content", True),
+                error=event.payload.get("error"),
+            )
+
+        # Cron tracking — last execution per job
+        elif et == EventType.CRON_TRIGGERED:
+            job_id = event.payload.get("job_id", "")
+            if job_id:
+                self.cron_jobs[job_id] = CronJobState(
+                    job_id=job_id,
+                    job_name=event.payload.get("job_name", ""),
+                    last_triggered_at=event.timestamp,
+                    last_status=event.payload.get("status", "ok"),
+                    last_error=event.payload.get("error"),
+                )
 
     def _rebuild_state(self) -> None:
         """Replay all stored events to rebuild derived state on startup."""
@@ -238,3 +261,37 @@ class ChainState:
         self.status = status
         self.started_at = started_at
         self.completed_at: Optional[datetime] = None
+
+
+class HeartbeatState:
+    """Last-known heartbeat state (overwritten each tick)."""
+
+    def __init__(
+        self,
+        action: str,
+        checked_at: datetime,
+        had_content: bool = True,
+        error: Optional[str] = None,
+    ) -> None:
+        self.action = action
+        self.checked_at = checked_at
+        self.had_content = had_content
+        self.error = error
+
+
+class CronJobState:
+    """Last-known execution state per cron job ID."""
+
+    def __init__(
+        self,
+        job_id: str,
+        job_name: str,
+        last_triggered_at: datetime,
+        last_status: str = "ok",
+        last_error: Optional[str] = None,
+    ) -> None:
+        self.job_id = job_id
+        self.job_name = job_name
+        self.last_triggered_at = last_triggered_at
+        self.last_status = last_status
+        self.last_error = last_error

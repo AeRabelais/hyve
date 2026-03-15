@@ -284,7 +284,7 @@ def gateway(
     # Create cron service first (callback set after agent creation)
     # Use workspace path for per-instance cron store
     cron_store_path = config.workspace_path / "cron" / "jobs.json"
-    cron = CronService(cron_store_path)
+    cron = CronService(cron_store_path, emitter=emitter)
 
     # Create agent registry for multi-agent support
     registry = AgentRegistry(
@@ -405,6 +405,7 @@ def gateway(
         on_notify=on_heartbeat_notify,
         interval_s=hb_cfg.interval_s,
         enabled=hb_cfg.enabled,
+        emitter=emitter,
     )
 
     if channels.enabled_channels:

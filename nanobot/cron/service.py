@@ -1,16 +1,21 @@
 """Cron service for scheduling agent tasks."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Coroutine
+from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
 from loguru import logger
 
 from nanobot.cron.types import CronJob, CronJobState, CronPayload, CronSchedule, CronStore
+
+if TYPE_CHECKING:
+    from nanobot.events.emitter import EventEmitter
 
 
 def _now_ms() -> int:
@@ -66,10 +71,12 @@ class CronService:
     def __init__(
         self,
         store_path: Path,
-        on_job: Callable[[CronJob], Coroutine[Any, Any, str | None]] | None = None
+        on_job: Callable[[CronJob], Coroutine[Any, Any, str | None]] | None = None,
+        emitter: EventEmitter | None = None,
     ):
         self.store_path = store_path
         self.on_job = on_job
+        self.emitter = emitter
         self._store: CronStore | None = None
         self._last_mtime: float = 0.0
         self._timer_task: asyncio.Task | None = None
@@ -242,9 +249,32 @@ class CronService:
         self._save_store()
         self._arm_timer()
 
+    async def _emit_cron(self, job: CronJob, *, status: str, error: str | None, duration_ms: float) -> None:
+        """Emit a cron.triggered event if an emitter is configured."""
+        if not self.emitter:
+            return
+        from nanobot.events.models import CronTriggeredPayload, Event, EventType
+
+        payload = CronTriggeredPayload(
+            job_id=job.id,
+            job_name=job.name,
+            schedule_kind=job.schedule.kind,
+            message=job.payload.message,
+            status=status,
+            error=error,
+            duration_ms=duration_ms,
+            deliver=job.payload.deliver,
+            channel=job.payload.channel,
+        )
+        await self.emitter.emit(Event(
+            event_type=EventType.CRON_TRIGGERED,
+            payload=payload.model_dump(),
+        ))
+
     async def _execute_job(self, job: CronJob) -> None:
         """Execute a single job."""
         start_ms = _now_ms()
+        t0 = time.monotonic()
         logger.info("Cron: executing job '{}' ({})", job.name, job.id)
 
         try:
@@ -255,11 +285,15 @@ class CronService:
             job.state.last_status = "ok"
             job.state.last_error = None
             logger.info("Cron: job '{}' completed", job.name)
+            duration_ms = (time.monotonic() - t0) * 1000
+            await self._emit_cron(job, status="ok", error=None, duration_ms=duration_ms)
 
         except Exception as e:
             job.state.last_status = "error"
             job.state.last_error = str(e)
             logger.error("Cron: job '{}' failed: {}", job.name, e)
+            duration_ms = (time.monotonic() - t0) * 1000
+            await self._emit_cron(job, status="error", error=str(e), duration_ms=duration_ms)
 
         job.state.last_run_at_ms = start_ms
         job.updated_at_ms = _now_ms()
