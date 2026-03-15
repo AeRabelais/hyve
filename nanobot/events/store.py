@@ -97,8 +97,7 @@ class EventStore:
                 state.status = "idle"
                 state.completed_at = event.timestamp
 
-        # TODO(Phase 2): Chain derived state — these handlers are ready but
-        # chain events won't be emitted until ChainManager is built.
+        # Chain derived state — updated by ChainManager events
         elif et == EventType.CHAIN_DELEGATED:
             chain_id = event.chain_id
             if chain_id and chain_id not in self.active_chains:

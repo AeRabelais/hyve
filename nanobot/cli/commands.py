@@ -249,7 +249,10 @@ def gateway(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
     """Start the nanobot gateway."""
+    from nanobot.agent.chain import ChainManager
     from nanobot.agent.loop import AgentLoop
+    from nanobot.agent.registry import AgentRegistry
+    from nanobot.agent.router import Router
     from nanobot.bus.queue import MessageBus
     from nanobot.channels.manager import ChannelManager
     from nanobot.config.loader import get_data_dir, load_config
@@ -283,27 +286,31 @@ def gateway(
     cron_store_path = config.workspace_path / "cron" / "jobs.json"
     cron = CronService(cron_store_path)
 
-    # Create agent with cron service and event emitter
-    agent = AgentLoop(
-        bus=bus,
+    # Create agent registry for multi-agent support
+    registry = AgentRegistry(
+        config=config,
         provider=provider,
-        workspace=config.workspace_path,
-        model=config.agents.defaults.model,
-        temperature=config.agents.defaults.temperature,
-        max_tokens=config.agents.defaults.max_tokens,
-        max_iterations=config.agents.defaults.max_tool_iterations,
-        memory_window=config.agents.defaults.memory_window,
-        reasoning_effort=config.agents.defaults.reasoning_effort,
-        brave_api_key=config.tools.web.search.api_key or None,
-        web_proxy=config.tools.web.proxy or None,
-        exec_config=config.tools.exec,
-        cron_service=cron,
-        restrict_to_workspace=config.tools.restrict_to_workspace,
-        session_manager=session_manager,
-        mcp_servers=config.tools.mcp_servers,
-        channels_config=config.channels,
+        bus=bus,
         emitter=emitter,
+        cron_service=cron,
+        session_manager=session_manager,
     )
+
+    # Create chain manager for multi-agent chains
+    chain_manager = ChainManager(registry=registry, bus=bus, emitter=emitter)
+
+    # Create router for message prefix dispatch
+    router = Router(bus=bus, registry=registry, chain_manager=chain_manager, emitter=emitter)
+
+    # Get the default agent (backward compatible — also used for cron/heartbeat)
+    agent = registry.get_or_create("default")
+
+    # Register delegate tool if named agents are configured
+    if config.agents.agents:
+        from nanobot.agent.tools.delegate import DelegateTool
+        agent.tools.register(DelegateTool(registry=registry))
+
+    has_multi_agent = bool(config.agents.agents or config.agents.teams)
 
     # Set cron callback (needs agent)
     async def on_cron_job(job: CronJob) -> str | None:
@@ -411,21 +418,29 @@ def gateway(
 
     console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_s}s")
 
+    if has_multi_agent:
+        agent_names = ", ".join(config.agents.agents.keys())
+        team_names = ", ".join(config.agents.teams.keys())
+        console.print(f"[green]✓[/green] Multi-agent: agents=[{agent_names}], teams=[{team_names}]")
+        console.print("[green]✓[/green] Router: @agent, @team, #chain prefix dispatch enabled")
+
     async def run():
         try:
             await cron.start()
             await heartbeat.start()
+            # Use Router for message dispatch (handles both single & multi-agent)
             await asyncio.gather(
-                agent.run(),
+                router.run(),
                 channels.start_all(),
             )
         except KeyboardInterrupt:
             console.print("\nShutting down...")
         finally:
-            await agent.close_mcp()
+            await registry.close_all()
             heartbeat.stop()
             cron.stop()
-            agent.stop()
+            router.stop()
+            registry.stop_all()
             await channels.stop_all()
 
     asyncio.run(run())

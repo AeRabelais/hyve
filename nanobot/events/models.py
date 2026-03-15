@@ -21,12 +21,10 @@ class EventType(str, Enum):
     TOOL_CALLED = "tool.called"
     TOOL_RESULT = "tool.result"
 
-    # Routing
-    # TODO(Phase 2): Emit from Router.route() once Router layer is built
+    # Routing — emitted by Router.parse() on every inbound message dispatch
     MESSAGE_ROUTED = "message.routed"
 
-    # Chain coordination
-    # TODO(Phase 2): Emit from ChainManager once chain orchestration is built
+    # Chain coordination — emitted by ChainManager during multi-agent chains
     CHAIN_DELEGATED = "chain.delegated"
     CHAIN_AWAITING_APPROVAL = "chain.awaiting_approval"
     CHAIN_APPROVED = "chain.approved"

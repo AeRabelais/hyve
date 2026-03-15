@@ -1,4 +1,10 @@
-"""Subagent manager for background task execution."""
+"""Subagent manager for background task execution.
+
+This implements Mode 1: anonymous background workers for long-running tasks
+(via the ``spawn`` tool). Mode 2 — delegation to named agents — is handled
+by ``DelegateTool`` in ``nanobot.agent.tools.delegate``, which routes
+through ``AgentRegistry`` to reach fully configured named agents.
+"""
 
 import asyncio
 import json

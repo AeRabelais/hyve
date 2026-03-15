@@ -248,10 +248,35 @@ class AgentDefaults(Base):
     reasoning_effort: str | None = None  # low / medium / high — enables LLM thinking mode
 
 
+class AgentConfig(Base):
+    """Per-agent configuration. None/missing values fall back to AgentDefaults."""
+
+    model: str | None = None
+    workspace: str | None = None  # Per-agent workspace (defaults to ~/.nanobot/workspace/<agent_id>)
+    system_prompt: str | None = None  # Custom system prompt override
+    tools: list[str] | None = None  # Tool allowlist; None = all default tools
+    skills: list[str] = Field(default_factory=list)  # Skills to always load
+    max_iterations: int | None = None
+    temperature: float | None = None
+    max_tokens: int | None = None
+    memory_window: int | None = None
+    reasoning_effort: str | None = None
+
+
+class TeamConfig(Base):
+    """Team definition for multi-agent chains."""
+
+    leader: str  # Agent ID of team leader
+    agents: list[str] = Field(default_factory=list)  # Member agent IDs
+    approval_mode: Literal["auto", "confirm", "first_only"] = "auto"
+
+
 class AgentsConfig(Base):
     """Agent configuration."""
 
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
+    agents: dict[str, AgentConfig] = Field(default_factory=dict)  # Named agent configs
+    teams: dict[str, TeamConfig] = Field(default_factory=dict)  # Named team configs
 
 
 class ProviderConfig(Base):
