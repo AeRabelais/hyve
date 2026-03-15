@@ -19,6 +19,7 @@ export interface AgentState {
   chain_id: string | null
   iteration: number
   total_tokens: number
+  total_cost_usd: number
 }
 
 export interface ChainState {
@@ -43,6 +44,16 @@ export interface CronJobState {
   last_error: string | null
 }
 
+export interface TaskBoardItem {
+  task_id: string
+  title: string
+  agent_id: string | null
+  chain_id: string | null
+  status: 'pending' | 'active' | 'done'
+  started_at: string | null
+  completed_at: string | null
+}
+
 export interface ConfigInfo {
   default_model: string
   agents: Record<string, { model: string | null; system_prompt: string }>
@@ -58,6 +69,7 @@ export interface SnapshotMessage {
     chains: Record<string, ChainState>
     heartbeat: HeartbeatState | null
     cron_jobs: Record<string, CronJobState>
+    task_board: Record<string, TaskBoardItem>
     recent_events: NanobotEvent[]
   }
 }

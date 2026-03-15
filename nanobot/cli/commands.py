@@ -990,6 +990,191 @@ def _login_github_copilot() -> None:
 
 
 # ============================================================================
+# Memory Commands
+# ============================================================================
+
+memory_app = typer.Typer(help="Memory system management")
+app.add_typer(memory_app, name="memory")
+
+
+@memory_app.command("status")
+def memory_status(
+    db_path: str | None = typer.Option(None, "--db", help="Memory database path"),
+):
+    """Show memory system status and statistics."""
+    from nanobot.config.loader import load_config
+    from nanobot.memory.db.connection import get_engine, init_db
+    from nanobot.memory.db.queries import get_db_stats, get_last_distillation_time
+
+    config = load_config()
+    path = Path(db_path) if db_path else config.workspace_path / "memory.db"
+
+    if not path.exists():
+        console.print(f"[yellow]Memory database not found at {path}[/yellow]")
+        console.print("[dim]Run 'nanobot gateway' with memory.enabled=true to initialize.[/dim]")
+        raise typer.Exit(0)
+
+    init_db(path)
+    conn = get_engine(path)
+    stats = get_db_stats(conn)
+
+    console.print(f"\n{__logo__} Memory System Status\n")
+    console.print(f"Database: {path}")
+    console.print(f"  Total events: [cyan]{stats['total_events']}[/cyan]")
+    console.print(f"  Total facts:  [cyan]{stats['total_facts']}[/cyan]")
+
+    if stats.get("facts_by_tier"):
+        table = Table(title="Facts by Decay Tier")
+        table.add_column("Tier", style="cyan")
+        table.add_column("Count", justify="right", style="green")
+        for tier, count in sorted(stats["facts_by_tier"].items()):
+            table.add_row(tier, str(count))
+        console.print(table)
+
+    last = stats.get("last_distillation")
+    if last:
+        console.print(f"\n  Last distillation: [green]{last}[/green]")
+    else:
+        console.print("\n  Last distillation: [dim]never[/dim]")
+
+    console.print(f"\n  Memory enabled: {'[green]yes[/green]' if config.memory.enabled else '[yellow]no[/yellow]'}")
+    console.print(f"  Distillation model: {config.memory.distillation_model or config.agents.defaults.model}")
+    console.print()
+
+
+@memory_app.command("prune")
+def memory_prune(
+    db_path: str | None = typer.Option(None, "--db", help="Memory database path"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be pruned without deleting"),
+):
+    """Prune expired facts based on their TTL and decay tier."""
+    from nanobot.config.loader import load_config
+    from nanobot.memory.db.connection import init_db
+    from nanobot.memory.pruner import run_prune_cycle
+
+    config = load_config()
+    path = Path(db_path) if db_path else config.workspace_path / "memory.db"
+
+    if not path.exists():
+        console.print("[yellow]Memory database not found.[/yellow]")
+        raise typer.Exit(1)
+
+    init_db(path)
+    mode = "DRY RUN" if dry_run else "Pruning"
+    console.print(f"{__logo__} Memory prune ({mode})...\n")
+
+    pruned = run_prune_cycle(path, dry_run=dry_run)
+
+    if not pruned:
+        console.print("[green]✓[/green] Nothing to prune — all facts are current.")
+    else:
+        table = Table(title=f"{'Would prune' if dry_run else 'Pruned'} {len(pruned)} fact(s)")
+        table.add_column("Entity", style="cyan")
+        table.add_column("Key")
+        table.add_column("Tier", style="yellow")
+        table.add_column("TTL (s)", justify="right")
+        table.add_column("Age (h)", justify="right")
+        for pf in pruned:
+            table.add_row(
+                pf.entity or "—",
+                pf.key,
+                pf.decay_tier,
+                str(pf.ttl_seconds),
+                f"{pf.age_seconds / 3600:.1f}",
+            )
+        console.print(table)
+
+    console.print()
+
+
+@memory_app.command("distill")
+def memory_distill(
+    db_path: str | None = typer.Option(None, "--db", help="Memory database path"),
+):
+    """Run memory distillation — extract facts from raw events."""
+    from nanobot.config.loader import load_config
+    from nanobot.memory.db.connection import init_db
+
+    config = load_config()
+    provider = _make_provider(config)
+    model = config.memory.distillation_model or config.agents.defaults.model
+    path = Path(db_path) if db_path else config.workspace_path / "memory.db"
+
+    if not path.exists():
+        console.print("[yellow]Memory database not found.[/yellow]")
+        raise typer.Exit(1)
+
+    init_db(path)
+    console.print(f"{__logo__} Memory distillation (model: {model})...\n")
+
+    async def _run():
+        from nanobot.memory.distiller import run_distillation
+
+        result = await run_distillation(
+            provider=provider,
+            model=model,
+            db_path=path,
+            decay_config=config.memory.decay,
+        )
+        return result
+
+    result = asyncio.run(_run())
+
+    console.print(f"  Events processed: [cyan]{result.events_processed}[/cyan]")
+    console.print(f"  Facts extracted:  [cyan]{result.facts_extracted}[/cyan]")
+    console.print(f"  Facts inserted:   [green]{result.facts_inserted}[/green]")
+    console.print(f"  Facts updated:    [yellow]{result.facts_updated}[/yellow]")
+    if result.errors:
+        console.print(f"  Errors:           [red]{len(result.errors)}[/red]")
+        for err in result.errors[:5]:
+            console.print(f"    [dim]{err}[/dim]")
+    console.print()
+
+
+@memory_app.command("generate")
+def memory_generate(
+    db_path: str | None = typer.Option(None, "--db", help="Memory database path"),
+    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
+):
+    """Generate MEMORY.md index and detail files from distilled facts."""
+    from nanobot.config.loader import load_config
+    from nanobot.memory.db.connection import init_db
+    from nanobot.memory.generator import run_generation
+
+    config = load_config()
+    ws = Path(workspace) if workspace else config.workspace_path
+    path = Path(db_path) if db_path else ws / "memory.db"
+
+    if not path.exists():
+        console.print("[yellow]Memory database not found.[/yellow]")
+        raise typer.Exit(1)
+
+    init_db(path)
+    console.print(f"{__logo__} Generating core knowledge files...\n")
+
+    result = run_generation(
+        workspace=ws,
+        db_path=path,
+        max_tokens=config.memory.index.max_tokens,
+        active_context_slots=config.memory.index.active_context_slots,
+    )
+
+    console.print(f"  Workspaces written: [cyan]{result.workspaces_written}[/cyan]")
+    console.print(f"  Index files:        [cyan]{result.index_files}[/cyan]")
+    console.print(f"  Detail files:       [green]{result.detail_files_written}[/green]")
+    console.print(f"  Cleaned:            [yellow]{result.detail_files_cleaned}[/yellow]")
+    console.print(f"  Facts rendered:     [cyan]{result.facts_rendered}[/cyan]")
+    if result.errors:
+        console.print(f"  Errors:             [red]{len(result.errors)}[/red]")
+        for err in result.errors[:5]:
+            console.print(f"    [dim]{err}[/dim]")
+
+    if result.index_files > 0:
+        console.print(f"\n[green]✓[/green] Generated MEMORY.md at {ws / 'MEMORY.md'}")
+    console.print()
+
+
+# ============================================================================
 # Dashboard
 # ============================================================================
 

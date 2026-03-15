@@ -97,6 +97,7 @@ def _serialize_agent_state(state) -> dict:
         "chain_id": state.chain_id,
         "iteration": state.iteration,
         "total_tokens": state.total_tokens,
+        "total_cost_usd": state.total_cost_usd,
     }
 
 
@@ -127,6 +128,18 @@ def _serialize_cron_job(state) -> dict:
         "last_triggered_at": state.last_triggered_at.isoformat() if state.last_triggered_at else None,
         "last_status": state.last_status,
         "last_error": state.last_error,
+    }
+
+
+def _serialize_task(state) -> dict:
+    return {
+        "task_id": state.task_id,
+        "title": state.title,
+        "agent_id": state.agent_id,
+        "chain_id": state.chain_id,
+        "status": state.status,
+        "started_at": state.started_at.isoformat() if state.started_at else None,
+        "completed_at": state.completed_at.isoformat() if state.completed_at else None,
     }
 
 
@@ -183,6 +196,10 @@ def create_app(
                     "cron_jobs": {
                         k: _serialize_cron_job(v)
                         for k, v in store.cron_jobs.items()
+                    },
+                    "task_board": {
+                        k: _serialize_task(v)
+                        for k, v in store.task_board.items()
                     },
                     "recent_events": [
                         _serialize_event(e)
@@ -243,6 +260,10 @@ def create_app(
             "cron_jobs": {
                 k: _serialize_cron_job(v)
                 for k, v in store.cron_jobs.items()
+            },
+            "task_board": {
+                k: _serialize_task(v)
+                for k, v in store.task_board.items()
             },
         })
 

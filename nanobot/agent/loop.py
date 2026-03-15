@@ -215,16 +215,26 @@ class AgentLoop:
                     payload={"iteration": iteration},
                 ))
                 if response.usage:
-                    # TODO: Add cost_usd calculation based on model pricing tables
+                    from nanobot.providers.pricing import compute_cost
+
+                    _input_tokens = response.usage.get("input_tokens", 0)
+                    _output_tokens = response.usage.get("output_tokens", 0)
+                    _cache_read_tokens = response.usage.get("cache_read_input_tokens", 0)
+                    _cost_usd = compute_cost(
+                        self.model,
+                        input_tokens=_input_tokens,
+                        output_tokens=_output_tokens,
+                        cache_read_tokens=_cache_read_tokens,
+                    )
                     await self.emitter.emit(Event(
                         event_type=EventType.USAGE_TRACKED,
                         agent_id=self.agent_id,
                         payload={
                             "model": self.model,
-                            "input_tokens": response.usage.get("input_tokens", 0),
-                            "output_tokens": response.usage.get("output_tokens", 0),
-                            "cache_read_tokens": response.usage.get("cache_read_input_tokens", 0),
-                            "cost_usd": None,
+                            "input_tokens": _input_tokens,
+                            "output_tokens": _output_tokens,
+                            "cache_read_tokens": _cache_read_tokens,
+                            "cost_usd": _cost_usd,
                         },
                     ))
 

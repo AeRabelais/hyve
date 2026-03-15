@@ -48,8 +48,7 @@ class EventStore:
         self.active_chains: dict[str, ChainState] = {}
         self.last_heartbeat: HeartbeatState | None = None
         self.cron_jobs: dict[str, CronJobState] = {}
-        # TODO(Phase 5): Add task_board derived state for dashboard Kanban view
-        # self.task_board: dict[str, TaskState] = {}
+        self.task_board: dict[str, TaskState] = {}
 
         self._rebuild_state()
 
@@ -89,6 +88,17 @@ class EventStore:
                 chain_id=event.chain_id,
                 iteration=0,
             )
+            # Task board: agent becomes an active task
+            if event.agent_id:
+                title = event.payload.get("preview", f"Agent {event.agent_id} processing")
+                self.task_board[f"agent:{event.agent_id}"] = TaskState(
+                    task_id=f"agent:{event.agent_id}",
+                    title=title[:120] if title else f"Agent {event.agent_id} processing",
+                    agent_id=event.agent_id,
+                    chain_id=event.chain_id,
+                    status="active",
+                    started_at=event.timestamp,
+                )
 
         elif et == EventType.AGENT_ITERATION:
             if state := self.active_agents.get(event.agent_id):
@@ -98,6 +108,11 @@ class EventStore:
             if state := self.active_agents.get(event.agent_id):
                 state.status = "idle"
                 state.completed_at = event.timestamp
+            # Task board: mark agent task done
+            task_key = f"agent:{event.agent_id}"
+            if task := self.task_board.get(task_key):
+                task.status = "done"
+                task.completed_at = event.timestamp
 
         # Chain derived state — updated by ChainManager events
         elif et == EventType.CHAIN_DELEGATED:
@@ -108,21 +123,50 @@ class EventStore:
                     status="active",
                     started_at=event.timestamp,
                 )
+            # Task board: chain becomes an active task
+            if chain_id:
+                from_agent = event.payload.get("from_agent", "")
+                title = f"Chain #{chain_id}"
+                if from_agent:
+                    title += f" (from {from_agent})"
+                self.task_board[f"chain:{chain_id}"] = TaskState(
+                    task_id=f"chain:{chain_id}",
+                    title=title,
+                    agent_id=event.agent_id,
+                    chain_id=chain_id,
+                    status="active",
+                    started_at=event.timestamp,
+                )
 
         elif et == EventType.CHAIN_AWAITING_APPROVAL:
             if state := self.active_chains.get(event.chain_id):
                 state.status = "awaiting_approval"
+            # Task board: chain task becomes pending (waiting for approval)
+            if event.chain_id:
+                task_key = f"chain:{event.chain_id}"
+                if task := self.task_board.get(task_key):
+                    task.status = "pending"
+                    task.title = f"Awaiting approval: #{event.chain_id}"
 
         elif et == EventType.CHAIN_COMPLETED:
             if state := self.active_chains.get(event.chain_id):
                 state.status = "completed"
                 state.completed_at = event.timestamp
+            # Task board: mark chain task done
+            if event.chain_id:
+                task_key = f"chain:{event.chain_id}"
+                if task := self.task_board.get(task_key):
+                    task.status = "done"
+                    task.completed_at = event.timestamp
 
         # Usage events update agent cumulative stats
         elif et == EventType.USAGE_TRACKED:
             if state := self.active_agents.get(event.agent_id):
                 state.total_tokens += event.payload.get("input_tokens", 0)
                 state.total_tokens += event.payload.get("output_tokens", 0)
+                cost = event.payload.get("cost_usd")
+                if cost is not None:
+                    state.total_cost_usd += cost
 
         # Heartbeat tracking
         elif et == EventType.HEARTBEAT_CHECKED:
@@ -246,6 +290,7 @@ class AgentState:
         self.chain_id = chain_id
         self.iteration = iteration
         self.total_tokens: int = 0
+        self.total_cost_usd: float = 0.0
 
 
 class ChainState:
@@ -295,3 +340,32 @@ class CronJobState:
         self.last_triggered_at = last_triggered_at
         self.last_status = last_status
         self.last_error = last_error
+
+
+class TaskState:
+    """Mutable in-memory state for a task on the Kanban board.
+
+    Tasks are derived from agent and chain lifecycle events:
+      * ``agent.started``  → active task  (key: ``agent:{agent_id}``)
+      * ``agent.completed`` → done task
+      * ``chain.delegated`` → active task  (key: ``chain:{chain_id}``)
+      * ``chain.awaiting_approval`` → pending task
+      * ``chain.completed`` → done task
+    """
+
+    def __init__(
+        self,
+        task_id: str,
+        title: str,
+        agent_id: Optional[str],
+        chain_id: Optional[str],
+        status: str,
+        started_at: datetime,
+    ) -> None:
+        self.task_id = task_id
+        self.title = title
+        self.agent_id = agent_id
+        self.chain_id = chain_id
+        self.status = status  # "pending" | "active" | "done"
+        self.started_at = started_at
+        self.completed_at: Optional[datetime] = None
