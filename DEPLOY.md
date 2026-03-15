@@ -25,18 +25,16 @@ On your DigitalOcean droplet, ensure the following are installed:
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 
-# Tailscale (secure remote access)
+# Tailscale (secure remote access + HTTPS serving)
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 
-# Caddy (reverse proxy for HTTPS + auth)
-sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo apt update && sudo apt install caddy
-
-# Git (for cloning the repo)
+# Git
 sudo apt install -y git
+
+# Node.js 20 (for dashboard build)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
 ```
 
 ### 1.2 Clone & Build
@@ -60,7 +58,7 @@ Hyve runs two isolated nanobot instances:
 | Instance | Purpose | Port | Exposure |
 |----------|---------|------|----------|
 | `nanobot-personal` | Your personal assistant | 18790 | `localhost` only (Tailscale access) |
-| `nanobot-symby` | Team/shared assistant | 18791 | Caddy HTTPS + basic auth |
+| `nanobot-symby` | Team/shared assistant | 18791 | `tailscale serve` (HTTPS on Tailnet) |
 
 Each instance gets its own config directory, EventStore, memory database, sessions, and dashboard.
 
@@ -107,7 +105,7 @@ services:
     volumes:
       - ~/.nanobot-personal:/root/.nanobot
 
-  # ── Symby instance (team, exposed via Caddy) ───────────
+  # ── Symby instance (team, exposed via Tailscale Serve) ─
   nanobot-symby:
     <<: *common
     container_name: nanobot-symby
@@ -139,62 +137,56 @@ Start everything:
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-### 1.4 Caddy Reverse Proxy
+### 1.4 Tailscale Serve
 
-Create `/etc/caddy/Caddyfile` to expose Symby with HTTPS and basic auth:
-
-```caddyfile
-# Symby gateway — team access via Tailscale hostname or domain
-symby.yourdomain.com {
-    basicauth {
-        # Generate hash: caddy hash-password --plaintext 'your-password'
-        admin $2a$14$HASH_HERE
-    }
-    reverse_proxy localhost:18791
-}
-
-# Symby dashboard
-dashboard.yourdomain.com {
-    basicauth {
-        admin $2a$14$HASH_HERE
-    }
-    reverse_proxy localhost:18793
-}
-
-# Personal dashboard (Tailscale-only access)
-# Access via http://<tailscale-ip>:18792 directly, or:
-personal.yourdomain.com {
-    @tailscale remote_ip 100.64.0.0/10
-    handle @tailscale {
-        reverse_proxy localhost:18792
-    }
-    respond "Forbidden" 403
-}
-```
-
-Reload Caddy:
+`tailscale serve` replaces a traditional reverse proxy (Caddy/nginx). It provides automatic HTTPS certs, identity-based access control via Tailscale ACLs, and zero configuration — no domains, no cert rotation, no basic auth hashes.
 
 ```bash
-sudo systemctl reload caddy
+# Expose the Symby dashboard with HTTPS on your Tailnet
+# This serves continuously in the background and persists across reboots
+tailscale serve --bg --set-path / https+insecure://localhost:18793
+
+# Verify it's running
+tailscale serve status
 ```
 
-### 1.5 Tailscale Access
+Now the Symby dashboard is available at `https://<droplet-hostname>.tail1234.ts.net/` from any device on your Tailnet — with valid HTTPS certs, automatically.
 
-With Tailscale running, you can access the personal instance from any of your devices:
+**Serving multiple dashboards** on different paths:
 
 ```bash
-# From your laptop/phone (on the same Tailnet):
-# Gateway API
-curl http://<droplet-tailscale-ip>:18790/status
+# Symby dashboard on root
+tailscale serve --bg --set-path / https+insecure://localhost:18793
+
+# Personal dashboard on /personal
+tailscale serve --bg --set-path /personal https+insecure://localhost:18792
+```
+
+**Exposing to non-Tailscale users** (optional — uses Tailscale Funnel):
+
+```bash
+# Funnel = public internet access through Tailscale's edge network
+# Only use this if team members are NOT on your Tailnet
+tailscale funnel --bg https+insecure://localhost:18793
+```
+
+**Accessing from your devices (all on the same Tailnet):**
+
+```bash
+# Symby dashboard (HTTPS, served by tailscale serve)
+open https://<droplet-hostname>.tail1234.ts.net/
 
 # Personal dashboard
-open http://<droplet-tailscale-ip>:18792
+open https://<droplet-hostname>.tail1234.ts.net/personal
+
+# Direct port access also works for raw API calls
+curl http://<droplet-tailscale-ip>:18790/status
 
 # SSH for maintenance
 ssh user@<droplet-tailscale-ip>
 ```
 
-No ports exposed to the public internet for the personal instance.
+No ports are exposed to the public internet. All access is authenticated through Tailscale identity.
 
 ---
 
@@ -202,33 +194,55 @@ No ports exposed to the public internet for the personal instance.
 
 ### 2.1 Directory Structure
 
-Each instance is fully isolated:
+Each instance is fully isolated. When you configure named agents (coder, researcher, etc.), **each agent gets its own workspace** with its own copy of `SOUL.md`, `AGENTS.md`, `HEARTBEAT.md`, etc. — so you can customize personality, instructions, and periodic tasks per agent.
 
 ```
 ~/.nanobot-personal/          # Personal instance
 ├── config.json               # Provider keys, channel tokens, agent config
-├── workspace/                # Agent workspace (files, sessions, cron)
+├── events.db                 # EventStore (SQLite)
+├── workspace/                # ── Default agent workspace ──
 │   ├── SOUL.md              # Personality definition
 │   ├── AGENTS.md            # Agent instructions
 │   ├── HEARTBEAT.md         # Periodic tasks
 │   ├── USER.md              # User preferences
+│   ├── TOOLS.md             # Tool usage guidance
 │   ├── MEMORY.md            # Generated knowledge index
 │   ├── memory/              # Generated detail files
 │   │   ├── people/
 │   │   ├── projects/
 │   │   ├── decisions/
 │   │   └── context/
+│   ├── memory.db            # Memory system (SQLite)
 │   ├── sessions/            # Conversation history
-│   └── cron/                # Scheduled job store
-├── events.db                # EventStore (SQLite)
-└── memory.db                # Memory system (SQLite)
+│   ├── cron/                # Scheduled job store
+│   ├── skills/              # Custom skills
+│   │
+│   ├── coder/               # ── Named agent: coder ──
+│   │   ├── SOUL.md         #    (customize: "You are a senior engineer...")
+│   │   ├── AGENTS.md
+│   │   ├── HEARTBEAT.md
+│   │   └── ...
+│   │
+│   ├── researcher/          # ── Named agent: researcher ──
+│   │   ├── SOUL.md         #    (customize: "You are a research analyst...")
+│   │   ├── AGENTS.md
+│   │   └── ...
+│   │
+│   └── writer/              # ── Named agent: writer ──
+│       ├── SOUL.md
+│       └── ...
 
 ~/.nanobot-symby/             # Team instance (same structure)
 ├── config.json
-├── workspace/
 ├── events.db
-└── memory.db
+└── workspace/
 ```
+
+**How per-agent workspaces work:**
+- Named agents without an explicit `"workspace"` in config get auto-created at `{default_workspace}/{agent_id}/`
+- You can also set `"workspace": "/custom/path"` per agent in config for full control
+- `sync_workspace_templates()` runs for each agent, creating all template files on first use
+- Each agent reads its own `SOUL.md`, `AGENTS.md`, `HEARTBEAT.md`, etc.
 
 ### 2.2 Config File Walkthrough
 
@@ -418,35 +432,186 @@ For Notion/Linear, the cleanest approach is MCP servers:
 
 ### 2.4 Obsidian Vault Integration
 
-The Obsidian vault is where all memories, generated knowledge, and important outputs live. It should be a synced directory (e.g., via Obsidian Sync, Syncthing, or a git-backed vault).
+The recommended pattern is to **place the agent workspace inside the Obsidian vault**. This way all files — template files (`SOUL.md`, `AGENTS.md`, etc.), generated knowledge files (`MEMORY.md`, people/projects/decisions), and agent outputs — land directly in Obsidian where they can be browsed, searched, and linked.
 
-```bash
-# Example: vault is synced to /home/user/obsidian-vault on the droplet
-# Map it into the container at /root/vault
-```
+**Setup:** Point the default workspace to a directory inside the vault.
 
-Set `memory.vaultPath` in `config.json` to the container-internal path:
+In `config.json`:
 
-```json
-"memory": {
-  "enabled": true,
-  "vaultPath": "/root/vault"
+```jsonc
+{
+  "agents": {
+    "defaults": {
+      // Workspace lives INSIDE the Obsidian vault
+      "workspace": "/root/vault/hyve"
+    }
+  },
+  "memory": {
+    "enabled": true
+    // vaultPath is omitted — defaults to workspace, so memory.db
+    // also lives inside the vault directory
+  }
 }
 ```
 
-The memory system will generate these files in the vault:
+In `docker-compose.prod.yml`, mount the vault:
 
-```
-/root/vault/
-├── MEMORY.md                    ← Knowledge index (auto-generated)
-├── memory/
-│   ├── people/alice.md          ← Person detail files
-│   ├── projects/hyve.md         ← Project detail files
-│   ├── decisions/2026-03.md     ← Monthly decision log
-│   └── context/current-sprint.md ← Active context
+```yaml
+volumes:
+  - ~/.nanobot-personal:/root/.nanobot
+  - /home/user/obsidian-vault:/root/vault     # Host vault → container /root/vault
 ```
 
-These files appear in Obsidian automatically and can be browsed, searched, and linked.
+**Resulting vault structure in Obsidian:**
+
+```
+obsidian-vault/                          # Your synced Obsidian vault
+├── ... (your other Obsidian notes)
+└── hyve/                                # ← Agent workspace = vault subdirectory
+    ├── SOUL.md                         # Agent personality (editable in Obsidian!)
+    ├── AGENTS.md                       # Agent instructions
+    ├── HEARTBEAT.md                    # Periodic tasks
+    ├── USER.md                         # User preferences
+    ├── TOOLS.md                        # Tool guidance
+    ├── MEMORY.md                       # ← Auto-generated knowledge index
+    ├── memory/                         # ← Auto-generated detail files
+    │   ├── people/alice.md
+    │   ├── projects/hyve.md
+    │   ├── decisions/2026-03.md
+    │   └── context/current-sprint.md
+    ├── memory.db                       # Memory SQLite (hidden in Obsidian)
+    ├── coder/                          # Named agent workspaces
+    │   ├── SOUL.md
+    │   └── ...
+    ├── researcher/
+    │   └── ...
+    └── sessions/                       # Conversation history
+```
+
+**Benefits:**
+- Edit `SOUL.md`, `HEARTBEAT.md`, etc. directly in Obsidian on any device
+- Memory-generated knowledge files (people, projects, decisions) appear automatically
+- Obsidian's graph view shows relationships between people, projects, and decisions
+- All files sync to your local machine via Obsidian Sync (see §2.5)
+- Named agent workspaces are visible as subfolders
+
+> **Tip:** Add `memory.db` and `sessions/` to Obsidian's excluded files (Settings → Files & Links → Excluded files) to keep the sidebar clean.
+
+### 2.5 Obsidian Headless Sync
+
+To continuously sync the remote vault on the droplet with a vault on your local machine, use [Obsidian's official headless sync](https://help.obsidian.md/sync/headless). This runs the Obsidian Sync protocol without a GUI, keeping the droplet's vault in sync with your local Obsidian.
+
+**Prerequisites:**
+- An active [Obsidian Sync](https://obsidian.md/sync) subscription
+- A remote vault already created and syncing from your local Obsidian app
+
+**Step 1: Install Obsidian CLI on the droplet**
+
+```bash
+# Download the latest Obsidian AppImage (headless-compatible)
+wget -O /opt/obsidian.AppImage https://github.com/obsidianmd/obsidian-releases/releases/download/v1.8.9/Obsidian-1.8.9.AppImage
+chmod +x /opt/obsidian.AppImage
+
+# Install required dependencies for headless operation
+sudo apt install -y libfuse2 xvfb
+```
+
+**Step 2: Log in to Obsidian Sync**
+
+```bash
+# Run Obsidian headless to authenticate (one-time)
+xvfb-run /opt/obsidian.AppImage --obsidian-sync-login
+# Follow the prompts to enter your Obsidian account credentials
+```
+
+**Step 3: Initialize the vault for headless sync**
+
+```bash
+# Create the vault directory if it doesn't exist
+mkdir -p /home/user/obsidian-vault
+
+# Connect the local directory to your remote vault
+xvfb-run /opt/obsidian.AppImage --obsidian-sync-init \
+  --vault-path /home/user/obsidian-vault \
+  --remote-vault "Hyve"     # Name of your remote vault in Obsidian Sync
+```
+
+**Step 4: Run headless sync as a systemd service**
+
+Create `/etc/systemd/system/obsidian-sync.service`:
+
+```ini
+[Unit]
+Description=Obsidian Headless Sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=user
+ExecStart=/usr/bin/xvfb-run /opt/obsidian.AppImage --obsidian-sync \
+  --vault-path /home/user/obsidian-vault
+Restart=always
+RestartSec=10
+Environment=DISPLAY=:99
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable obsidian-sync
+sudo systemctl start obsidian-sync
+
+# Verify it's running
+sudo systemctl status obsidian-sync
+```
+
+**Step 5: Verify sync is working**
+
+```bash
+# Check the sync log
+journalctl -u obsidian-sync -f
+
+# Create a test file from the droplet
+echo "# Test" > /home/user/obsidian-vault/hyve/test-from-server.md
+
+# Check that it appears in Obsidian on your local machine within a few seconds
+# Then delete it from either side to confirm bidirectional sync
+```
+
+**How it all fits together:**
+
+```
+┌─ Your local machine ──────────────────────────────┐
+│  Obsidian app                                      │
+│  └── vault: "Hyve"                                 │
+│      ├── hyve/SOUL.md      ← edit here             │
+│      ├── hyve/MEMORY.md    ← auto-generated        │
+│      └── hyve/memory/...   ← knowledge files       │
+│                        ▲                            │
+│                        │ Obsidian Sync (encrypted)  │
+└────────────────────────┼───────────────────────────┘
+                         │
+┌─ DigitalOcean droplet ─┼───────────────────────────┐
+│                        ▼                            │
+│  /home/user/obsidian-vault/  ← obsidian-sync.service│
+│  └── hyve/                                          │
+│      ├── SOUL.md, AGENTS.md, HEARTBEAT.md           │
+│      ├── MEMORY.md, memory/people/...               │
+│      └── memory.db, sessions/                       │
+│               ▲                                     │
+│               │ Docker volume mount                 │
+│               ▼                                     │
+│  nanobot-personal container                         │
+│  └── /root/vault/hyve/  (workspace)                 │
+└─────────────────────────────────────────────────────┘
+```
+
+Changes you make to `HEARTBEAT.md` in Obsidian on your phone sync to the droplet within seconds. Memory files generated by the nanobot at 2am sync back to your local vault automatically.
 
 ---
 
@@ -864,8 +1029,8 @@ docker exec -it nanobot-personal nanobot memory generate    # Build MEMORY.md
 docker exec -it nanobot-personal nanobot memory prune       # Remove expired facts
 
 # ── Dashboard ────────────────────────────────────────
-open http://<tailscale-ip>:18792                           # Personal dashboard
-open https://dashboard.yourdomain.com                      # Symby dashboard
+open https://<droplet-hostname>.ts.net/personal            # Personal dashboard
+open https://<droplet-hostname>.ts.net/                    # Symby dashboard
 
 # ── Channels ─────────────────────────────────────────
 docker exec -it nanobot-personal nanobot channels status    # Channel health
