@@ -31,8 +31,7 @@ class EventType(str, Enum):
     CHAIN_COMPLETED = "chain.completed"
     CHAIN_CHECKPOINT = "chain.checkpoint"
 
-    # Memory
-    # TODO(Phase 3): Emit from memory write path once layered memory is built
+    # Memory — emitted by the layered memory system (distiller, generator)
     MEMORY_WRITTEN = "memory.written"
 
     # Scheduling

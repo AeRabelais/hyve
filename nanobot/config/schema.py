@@ -363,6 +363,43 @@ class MCPServerConfig(Base):
     tool_timeout: int = 30  # seconds before a tool call is cancelled
 
 
+class DecayTTLConfig(Base):
+    """TTL settings for memory decay tiers."""
+
+    stable_ttl_days: int = 90
+    active_ttl_days: int = 14
+    session_ttl_hours: int = 24
+    checkpoint_ttl_hours: int = 4
+
+
+class MemoryIndexConfig(Base):
+    """Core knowledge index settings."""
+
+    max_tokens: int = 3000  # Token cap for MEMORY.md index
+    active_context_slots: int = 3  # Number of detail files always loaded
+
+
+class MemoryScheduleConfig(Base):
+    """Memory sidecar scheduling settings."""
+
+    hourly_prune: bool = True
+    daily_distill_time: str = "02:00"
+    weekly_cleanup_day: str = "sunday"
+    weekly_cleanup_time: str = "03:00"
+
+
+class MemoryConfig(Base):
+    """Memory system configuration (Phase 3)."""
+
+    enabled: bool = False  # Enable the layered memory system
+    distillation_model: str | None = None  # Model for fact extraction (defaults to agent model)
+    classification_model: str | None = None  # Model for decay classification (defaults to agent model)
+    vault_path: str | None = None  # Obsidian vault root (defaults to workspace)
+    decay: DecayTTLConfig = Field(default_factory=DecayTTLConfig)
+    index: MemoryIndexConfig = Field(default_factory=MemoryIndexConfig)
+    schedule: MemoryScheduleConfig = Field(default_factory=MemoryScheduleConfig)
+
+
 class ToolsConfig(Base):
     """Tools configuration."""
 
@@ -380,6 +417,7 @@ class Config(BaseSettings):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
 
     @property
     def workspace_path(self) -> Path:
