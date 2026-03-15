@@ -478,9 +478,18 @@ def create_app(
     ]
 
     # Serve built React app if it exists
-    static_dir = Path(__file__).parent.parent.parent / "dashboard" / "dist"
-    if static_dir.exists():
+    # Check multiple locations: source tree (dev), working directory (Docker), package parent
+    _candidates = [
+        Path(__file__).parent.parent.parent / "dashboard" / "dist",  # dev: repo root
+        Path.cwd() / "dashboard" / "dist",                           # Docker: WORKDIR /app
+        Path(__file__).parent / "static",                             # future: bundled
+    ]
+    static_dir = next((p for p in _candidates if p.exists()), None)
+    if static_dir:
+        logger.info("Dashboard: serving static files from {}", static_dir)
         routes.append(Mount("/", app=StaticFiles(directory=str(static_dir), html=True)))
+    else:
+        logger.warning("Dashboard: no static files found (checked {})", [str(p) for p in _candidates])
 
     app = Starlette(
         routes=routes,
