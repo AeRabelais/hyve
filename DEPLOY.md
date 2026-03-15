@@ -631,7 +631,9 @@ This creates the config file and workspace templates (`SOUL.md`, `AGENTS.md`, `H
 
 ### 3.2 Set API Keys
 
-Edit `~/.nanobot-personal/config.json` on the host (it's volume-mounted into the container):
+**Option A — Dashboard (recommended):** Open the dashboard and switch to the **Edit Config** tab. Expand the **Providers** section, enter your API keys, and click **Save Configuration**. Restart the gateway to apply.
+
+**Option B — CLI:** Edit `~/.nanobot-personal/config.json` on the host (it's volume-mounted into the container):
 
 ```bash
 nano ~/.nanobot-personal/config.json
@@ -705,6 +707,7 @@ open http://<tailscale-ip>:18792
 The dashboard shows:
 - **TopBar** — connection status, agent/chain counts, total tokens
 - **Sidebar** — agents, chains, teams
+- **Tab Bar** — switch between Monitor, Edit Config, Add Agent, and Add Team views
 - **Chain Visualizer** — multi-agent flow diagrams
 - **Event Feed** — live chronological event stream
 - **Task Board** — Kanban view (Pending/Active/Done)
@@ -844,7 +847,11 @@ docker exec -it nanobot-personal nanobot dashboard --host 0.0.0.0 --port 18792 -
 
 Or access via the docker-compose setup at `http://<tailscale-ip>:18792`.
 
-**Key panels:**
+The dashboard has four tabs accessible via the tab bar:
+
+#### Monitor Tab (default)
+
+The real-time operations view with six panels:
 
 | Panel | What it shows |
 |-------|---------------|
@@ -857,6 +864,84 @@ Or access via the docker-compose setup at `http://<tailscale-ip>:18792`.
 | **Command Bar** | Send messages to the agent directly from the dashboard |
 
 The dashboard connects via WebSocket for real-time updates. All events (agent lifecycle, tool calls, chain coordination, heartbeat, cron, usage tracking) stream live.
+
+#### Edit Config Tab
+
+A structured form editor for the full `config.json` — no more editing JSON by hand over SSH. Collapsible sections cover:
+
+| Section | What you can edit |
+|---------|-------------------|
+| **Agent Defaults** | Default model, workspace, provider, max tokens, temperature, reasoning effort |
+| **Providers** | API keys (masked) and base URLs for all 17 supported providers |
+| **MCP Servers** | Add/edit/remove MCP server connections (stdio, SSE, streamableHttp) with command, args, env, URL, headers |
+| **Gateway** | Host, port, heartbeat toggle and interval |
+| **Memory** | Enable/disable, vault path, distillation/classification models, decay TTLs, index settings |
+| **Tools** | Brave Search API key, web proxy, shell exec timeout, restrict-to-workspace toggle |
+| **Channels** | Enable/disable each channel (Telegram, Discord, Slack, WhatsApp, Email, Matrix, etc.) with per-channel credentials and settings |
+
+Click **Save Configuration** to persist changes to disk. A restart is required for changes to take effect.
+
+> **Tip:** Use Edit Config for initial onboarding — set your API keys, enable channels, and configure MCP servers all from the browser instead of hand-editing JSON.
+
+#### Add Agent Tab
+
+Create or edit named agents via a form:
+
+- **Agent ID** — unique identifier (e.g. `coder`, `researcher`, `writer`)
+- **Model** — override the default model, or leave blank to inherit
+- **Workspace** — custom workspace path (auto-created at `{default_workspace}/{agent_id}/` if omitted)
+- **System Prompt** — custom personality/instructions for this agent
+- **Tools** — allowlist of tools (empty = all tools available)
+- **Skills** — toggle built-in skills (github, memory, cron, tmux, etc.)
+- **Tuning** — max iterations, temperature, max tokens, memory window, reasoning effort
+
+Select an existing agent from the dropdown to edit or remove it.
+
+#### Add Team Tab
+
+Create or edit multi-agent teams:
+
+- **Team Name** — unique identifier (e.g. `dev-team`, `research-squad`)
+- **Leader** — select from existing agents (orchestrates the chain)
+- **Members** — select agents to include in the team
+- **Approval Mode** — how delegation between agents is approved:
+  - `auto` — all delegations are auto-approved
+  - `confirm` — every delegation requires manual approval
+  - `first_only` — first delegation requires approval, subsequent are auto-approved
+
+Select an existing team from the dropdown to edit or remove it.
+
+#### Config Management REST API
+
+The dashboard's config tabs are powered by a REST API that can also be used directly:
+
+```bash
+# Read the full config
+curl http://localhost:18792/api/config/full
+
+# Update the full config
+curl -X PUT http://localhost:18792/api/config/full \
+  -H "Content-Type: application/json" \
+  -d @updated-config.json
+
+# Add/update an agent
+curl -X POST http://localhost:18792/api/config/agents \
+  -H "Content-Type: application/json" \
+  -d '{"agentId": "coder", "model": "anthropic/claude-sonnet-4-20250514", "skills": ["github"]}'
+
+# Remove an agent
+curl -X DELETE http://localhost:18792/api/config/agents/coder
+
+# Add/update a team
+curl -X POST http://localhost:18792/api/config/teams \
+  -H "Content-Type: application/json" \
+  -d '{"teamName": "dev-team", "leader": "coder", "agents": ["coder", "researcher"], "approvalMode": "auto"}'
+
+# Remove a team
+curl -X DELETE http://localhost:18792/api/config/teams/dev-team
+```
+
+All write endpoints validate against the Pydantic config schema before saving to disk.
 
 ### 4.6 Skills
 
