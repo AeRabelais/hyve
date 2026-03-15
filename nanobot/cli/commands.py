@@ -419,6 +419,42 @@ def gateway(
 
     console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_s}s")
 
+    # Memory scheduler + watcher (if memory system is enabled)
+    mem_scheduler = None
+    mem_watcher = None
+    if config.memory.enabled:
+        from nanobot.memory.scheduler import MemoryScheduler
+        from nanobot.memory.watcher import WorkspaceWatcher
+
+        mem_model = config.memory.distillation_model or config.agents.defaults.model
+        mem_db_path = config.workspace_path / "memory.db" if config.memory.vault_path is None else Path(config.memory.vault_path) / "memory.db"
+
+        mem_scheduler = MemoryScheduler(
+            workspace=config.workspace_path,
+            provider=provider,
+            model=mem_model,
+            config=config.memory,
+            db_path=mem_db_path,
+            emitter=emitter,
+            agent_id="default",
+        )
+
+        # Watcher: default workspace + any named agent workspaces
+        watch_targets: list[tuple[Path, str]] = [(config.workspace_path, "default")]
+        for name, acfg in config.agents.agents.items():
+            if acfg.workspace:
+                watch_targets.append((Path(acfg.workspace), name))
+
+        mem_watcher = WorkspaceWatcher(
+            workspaces=watch_targets,
+            db_path=mem_db_path,
+            emitter=emitter,
+        )
+
+        console.print(f"[green]✓[/green] Memory system: scheduler + watcher enabled")
+    else:
+        console.print("[dim]Memory system: disabled (set memory.enabled=true in config)[/dim]")
+
     if has_multi_agent:
         agent_names = ", ".join(config.agents.agents.keys())
         team_names = ", ".join(config.agents.teams.keys())
@@ -429,6 +465,10 @@ def gateway(
         try:
             await cron.start()
             await heartbeat.start()
+            if mem_scheduler:
+                await mem_scheduler.start()
+            if mem_watcher:
+                mem_watcher.start()
             # Use Router for message dispatch (handles both single & multi-agent)
             await asyncio.gather(
                 router.run(),
@@ -437,6 +477,10 @@ def gateway(
         except KeyboardInterrupt:
             console.print("\nShutting down...")
         finally:
+            if mem_watcher:
+                mem_watcher.stop()
+            if mem_scheduler:
+                mem_scheduler.stop()
             await registry.close_all()
             heartbeat.stop()
             cron.stop()
@@ -943,6 +987,53 @@ def _login_github_copilot() -> None:
     except Exception as e:
         console.print(f"[red]Authentication error: {e}[/red]")
         raise typer.Exit(1)
+
+
+# ============================================================================
+# Dashboard
+# ============================================================================
+
+
+@app.command()
+def dashboard(
+    port: int = typer.Option(18791, "--port", "-p", help="Dashboard server port"),
+    host: str = typer.Option("127.0.0.1", "--host", help="Dashboard server host"),
+    no_open: bool = typer.Option(False, "--no-open", help="Don't open browser automatically"),
+    demo: bool = typer.Option(False, "--demo", help="Inject mock data for demo/preview"),
+):
+    """Launch the nanobot dashboard in your browser."""
+    import webbrowser
+
+    from nanobot.config.loader import get_data_dir, load_config
+    from nanobot.dashboard.server import create_app
+    from nanobot.events import setup as events_setup
+
+    config = load_config()
+    data_dir = get_data_dir()
+
+    # Initialize event system (reads persisted events for derived state)
+    emitter, event_store = events_setup(data_dir)
+
+    # Optionally wire up a MessageBus for command input
+    try:
+        from nanobot.bus.queue import MessageBus
+        bus = MessageBus()
+    except Exception:
+        bus = None
+
+    app_instance = create_app(emitter=emitter, store=event_store, bus=bus, config=config, demo=demo)
+
+    url = f"http://{host}:{port}"
+    console.print(f"{__logo__} Dashboard starting at [cyan]{url}[/cyan]")
+    if demo:
+        console.print("[green]✓[/green] Demo mode: 4 agents, 3 chains, live events every ~5s")
+    console.print("[dim]Press Ctrl+C to stop[/dim]\n")
+
+    if not no_open:
+        webbrowser.open(url)
+
+    import uvicorn
+    uvicorn.run(app_instance, host=host, port=port, log_level="warning")
 
 
 if __name__ == "__main__":
