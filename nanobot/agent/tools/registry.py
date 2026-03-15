@@ -21,7 +21,8 @@ class ToolRegistry:
     def __init__(self, emitter: EventEmitter | None = None):
         self._tools: dict[str, Tool] = {}
         self.emitter: EventEmitter | None = emitter
-        self._agent_id: str = "default"  # Updated by AgentLoop when multi-agent lands
+        # TODO(Phase 2): Sync with AgentLoop.agent_id from AgentRegistry
+        self._agent_id: str = "default"
 
     def register(self, tool: Tool) -> None:
         """Register a tool."""

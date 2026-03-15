@@ -21,20 +21,24 @@ class EventType(str, Enum):
     TOOL_CALLED = "tool.called"
     TOOL_RESULT = "tool.result"
 
-    # Routing (Phase 2)
+    # Routing
+    # TODO(Phase 2): Emit from Router.route() once Router layer is built
     MESSAGE_ROUTED = "message.routed"
 
-    # Chain coordination (Phase 2)
+    # Chain coordination
+    # TODO(Phase 2): Emit from ChainManager once chain orchestration is built
     CHAIN_DELEGATED = "chain.delegated"
     CHAIN_AWAITING_APPROVAL = "chain.awaiting_approval"
     CHAIN_APPROVED = "chain.approved"
     CHAIN_COMPLETED = "chain.completed"
     CHAIN_CHECKPOINT = "chain.checkpoint"
 
-    # Memory (Phase 3)
+    # Memory
+    # TODO(Phase 3): Emit from memory write path once layered memory is built
     MEMORY_WRITTEN = "memory.written"
 
     # Scheduling
+    # TODO(Phase 2): Emit from HeartbeatService and CronService
     HEARTBEAT_CHECKED = "heartbeat.checked"
     CRON_TRIGGERED = "cron.triggered"
 

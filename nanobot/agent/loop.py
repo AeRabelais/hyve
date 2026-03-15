@@ -70,7 +70,8 @@ class AgentLoop:
     ):
         from nanobot.config.schema import ExecToolConfig
         self.emitter = emitter
-        self.agent_id = "default"  # Per-agent IDs in Phase 2
+        # TODO(Phase 2): Replace with per-agent IDs from AgentRegistry
+        self.agent_id = "default"
         self.bus = bus
         self.channels_config = channels_config
         self.provider = provider
@@ -214,6 +215,7 @@ class AgentLoop:
                     payload={"iteration": iteration},
                 ))
                 if response.usage:
+                    # TODO: Add cost_usd calculation based on model pricing tables
                     await self.emitter.emit(Event(
                         event_type=EventType.USAGE_TRACKED,
                         agent_id=self.agent_id,
@@ -222,6 +224,7 @@ class AgentLoop:
                             "input_tokens": response.usage.get("input_tokens", 0),
                             "output_tokens": response.usage.get("output_tokens", 0),
                             "cache_read_tokens": response.usage.get("cache_read_input_tokens", 0),
+                            "cost_usd": None,
                         },
                     ))
 
@@ -454,9 +457,11 @@ class AgentLoop:
         if self.emitter:
             from nanobot.events.models import Event, EventType
 
+            # TODO(Phase 2): Pass chain_id from ChainContext when chains are built
             await self.emitter.emit(Event(
                 event_type=EventType.AGENT_STARTED,
                 agent_id=self.agent_id,
+                chain_id=None,
                 payload={
                     "model": self.model,
                     "channel": msg.channel,
