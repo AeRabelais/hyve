@@ -1,8 +1,14 @@
 """Tool registry for dynamic tool management."""
 
-from typing import Any
+from __future__ import annotations
+
+import time
+from typing import TYPE_CHECKING, Any
 
 from nanobot.agent.tools.base import Tool
+
+if TYPE_CHECKING:
+    from nanobot.events.emitter import EventEmitter
 
 
 class ToolRegistry:
@@ -12,8 +18,10 @@ class ToolRegistry:
     Allows dynamic registration and execution of tools.
     """
 
-    def __init__(self):
+    def __init__(self, emitter: EventEmitter | None = None):
         self._tools: dict[str, Tool] = {}
+        self.emitter: EventEmitter | None = emitter
+        self._agent_id: str = "default"  # Updated by AgentLoop when multi-agent lands
 
     def register(self, tool: Tool) -> None:
         """Register a tool."""
@@ -43,16 +51,54 @@ class ToolRegistry:
         if not tool:
             return f"Error: Tool '{name}' not found. Available: {', '.join(self.tool_names)}"
 
+        # ── Emit tool.called ──
+        if self.emitter:
+            from nanobot.events.models import Event, EventType
+
+            await self.emitter.emit(Event(
+                event_type=EventType.TOOL_CALLED,
+                agent_id=self._agent_id,
+                payload={"tool_name": name, "args": _sanitize_args(params)},
+            ))
+
+        t0 = time.monotonic()
         try:
             errors = tool.validate_params(params)
             if errors:
-                return f"Error: Invalid parameters for tool '{name}': " + "; ".join(errors) + _HINT
+                result = f"Error: Invalid parameters for tool '{name}': " + "; ".join(errors) + _HINT
+                await self._emit_tool_result(name, t0, success=False, error="validation_error")
+                return result
             result = await tool.execute(**params)
-            if isinstance(result, str) and result.startswith("Error"):
+            is_error = isinstance(result, str) and result.startswith("Error")
+            await self._emit_tool_result(name, t0, success=not is_error)
+            if is_error:
                 return result + _HINT
             return result
         except Exception as e:
+            await self._emit_tool_result(name, t0, success=False, error=str(e))
             return f"Error executing {name}: {str(e)}" + _HINT
+
+    async def _emit_tool_result(
+        self, name: str, t0: float, *, success: bool, error: str | None = None,
+    ) -> None:
+        """Emit a tool.result event with timing info."""
+        if not self.emitter:
+            return
+        from nanobot.events.models import Event, EventType
+
+        duration_ms = (time.monotonic() - t0) * 1000
+        payload: dict[str, Any] = {
+            "tool_name": name,
+            "duration_ms": round(duration_ms, 1),
+            "success": success,
+        }
+        if error:
+            payload["error"] = error
+        await self.emitter.emit(Event(
+            event_type=EventType.TOOL_RESULT,
+            agent_id=self._agent_id,
+            payload=payload,
+        ))
 
     @property
     def tool_names(self) -> list[str]:
@@ -64,3 +110,14 @@ class ToolRegistry:
 
     def __contains__(self, name: str) -> bool:
         return name in self._tools
+
+
+def _sanitize_args(params: dict[str, Any]) -> dict[str, Any]:
+    """Truncate large argument values for event payloads."""
+    sanitized: dict[str, Any] = {}
+    for k, v in params.items():
+        if isinstance(v, str) and len(v) > 200:
+            sanitized[k] = v[:200] + "…"
+        else:
+            sanitized[k] = v
+    return sanitized

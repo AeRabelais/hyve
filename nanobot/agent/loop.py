@@ -30,6 +30,7 @@ from nanobot.session.manager import Session, SessionManager
 if TYPE_CHECKING:
     from nanobot.config.schema import ChannelsConfig, ExecToolConfig
     from nanobot.cron.service import CronService
+    from nanobot.events.emitter import EventEmitter
 
 
 class AgentLoop:
@@ -65,8 +66,11 @@ class AgentLoop:
         session_manager: SessionManager | None = None,
         mcp_servers: dict | None = None,
         channels_config: ChannelsConfig | None = None,
+        emitter: EventEmitter | None = None,
     ):
         from nanobot.config.schema import ExecToolConfig
+        self.emitter = emitter
+        self.agent_id = "default"  # Per-agent IDs in Phase 2
         self.bus = bus
         self.channels_config = channels_config
         self.provider = provider
@@ -85,7 +89,7 @@ class AgentLoop:
 
         self.context = ContextBuilder(workspace)
         self.sessions = session_manager or SessionManager(workspace)
-        self.tools = ToolRegistry()
+        self.tools = ToolRegistry(emitter=emitter)
         self.subagents = SubagentManager(
             provider=provider,
             workspace=workspace,
@@ -199,6 +203,27 @@ class AgentLoop:
                 max_tokens=self.max_tokens,
                 reasoning_effort=self.reasoning_effort,
             )
+
+            # ── Emit agent.iteration + usage.tracked ──
+            if self.emitter:
+                from nanobot.events.models import Event, EventType
+
+                await self.emitter.emit(Event(
+                    event_type=EventType.AGENT_ITERATION,
+                    agent_id=self.agent_id,
+                    payload={"iteration": iteration},
+                ))
+                if response.usage:
+                    await self.emitter.emit(Event(
+                        event_type=EventType.USAGE_TRACKED,
+                        agent_id=self.agent_id,
+                        payload={
+                            "model": self.model,
+                            "input_tokens": response.usage.get("input_tokens", 0),
+                            "output_tokens": response.usage.get("output_tokens", 0),
+                            "cache_read_tokens": response.usage.get("cache_read_input_tokens", 0),
+                        },
+                    ))
 
             if response.has_tool_calls:
                 if on_progress:
@@ -425,6 +450,20 @@ class AgentLoop:
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
 
+        # ── Emit agent.started ──
+        if self.emitter:
+            from nanobot.events.models import Event, EventType
+
+            await self.emitter.emit(Event(
+                event_type=EventType.AGENT_STARTED,
+                agent_id=self.agent_id,
+                payload={
+                    "model": self.model,
+                    "channel": msg.channel,
+                    "preview": msg.content[:100],
+                },
+            ))
+
         history = session.get_history(max_messages=self.memory_window)
         initial_messages = self.context.build_messages(
             history=history,
@@ -450,6 +489,18 @@ class AgentLoop:
 
         self._save_turn(session, all_msgs, 1 + len(history))
         self.sessions.save(session)
+
+        # ── Emit agent.completed ──
+        if self.emitter:
+            from nanobot.events.models import Event, EventType
+
+            await self.emitter.emit(Event(
+                event_type=EventType.AGENT_COMPLETED,
+                agent_id=self.agent_id,
+                payload={
+                    "status": "success",
+                },
+            ))
 
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
             return None

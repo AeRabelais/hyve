@@ -252,7 +252,7 @@ def gateway(
     from nanobot.agent.loop import AgentLoop
     from nanobot.bus.queue import MessageBus
     from nanobot.channels.manager import ChannelManager
-    from nanobot.config.loader import load_config
+    from nanobot.config.loader import get_data_dir, load_config
     from nanobot.cron.service import CronService
     from nanobot.cron.types import CronJob
     from nanobot.heartbeat.service import HeartbeatService
@@ -269,6 +269,11 @@ def gateway(
 
     console.print(f"{__logo__} Starting nanobot gateway on port {port}...")
     sync_workspace_templates(config.workspace_path)
+
+    # Initialize event system
+    from nanobot.events import setup as events_setup
+    emitter, event_store = events_setup(get_data_dir())
+
     bus = MessageBus()
     provider = _make_provider(config)
     session_manager = SessionManager(config.workspace_path)
@@ -278,7 +283,7 @@ def gateway(
     cron_store_path = config.workspace_path / "cron" / "jobs.json"
     cron = CronService(cron_store_path)
 
-    # Create agent with cron service
+    # Create agent with cron service and event emitter
     agent = AgentLoop(
         bus=bus,
         provider=provider,
@@ -297,6 +302,7 @@ def gateway(
         session_manager=session_manager,
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
+        emitter=emitter,
     )
 
     # Set cron callback (needs agent)
@@ -462,6 +468,10 @@ def agent(
     else:
         logger.disable("nanobot")
 
+    # Initialize event system
+    from nanobot.events import setup as events_setup
+    emitter, event_store = events_setup(get_data_dir())
+
     agent_loop = AgentLoop(
         bus=bus,
         provider=provider,
@@ -479,6 +489,7 @@ def agent(
         restrict_to_workspace=config.tools.restrict_to_workspace,
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
+        emitter=emitter,
     )
 
     # Show spinner when logs are off (no output to miss); skip when logs are on
