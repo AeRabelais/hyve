@@ -44,11 +44,8 @@ cd /opt
 git clone https://github.com/your-org/hyve.git
 cd hyve
 
-# Build the Docker image
+# Build the Docker image (includes Python deps, WhatsApp bridge, and React dashboard)
 docker build -t hyve-nanobot .
-
-# Build the dashboard frontend (for serving via the dashboard command)
-cd dashboard && npm install && npm run build && cd ..
 ```
 
 ### 1.3 Two-Instance Architecture
@@ -91,7 +88,7 @@ services:
       - NANOBOT_HOME=/root/.nanobot
     volumes:
       - ~/.nanobot-personal:/root/.nanobot
-      - /path/to/obsidian-vault:/root/vault
+      - /root/Documents/vaults/hyve:/root/vault
 
   # ── Personal dashboard ──────────────────────────────────
   dashboard-personal:
@@ -116,7 +113,7 @@ services:
       - NANOBOT_HOME=/root/.nanobot
     volumes:
       - ~/.nanobot-symby:/root/.nanobot
-      - /path/to/obsidian-vault:/root/vault
+      -  /root/Documents/vaults/hyve:/root/vault
 
   # ── Symby dashboard ────────────────────────────────────
   dashboard-symby:
@@ -144,7 +141,7 @@ docker compose -f docker-compose.prod.yml up -d
 ```bash
 # Expose the Symby dashboard with HTTPS on your Tailnet
 # This serves continuously in the background and persists across reboots
-tailscale serve --bg --set-path / https+insecure://localhost:18793
+tailscale serve --bg --set-path / http://localhost:18793
 
 # Verify it's running
 tailscale serve status
@@ -156,10 +153,10 @@ Now the Symby dashboard is available at `https://<droplet-hostname>.tail1234.ts.
 
 ```bash
 # Symby dashboard on root
-tailscale serve --bg --set-path / https+insecure://localhost:18793
+tailscale serve --bg --set-path / http://localhost:18793
 
 # Personal dashboard on /personal
-tailscale serve --bg --set-path /personal https+insecure://localhost:18792
+tailscale serve --bg --set-path /personal http://localhost:18792
 ```
 
 **Exposing to non-Tailscale users** (optional — uses Tailscale Funnel):
@@ -167,7 +164,7 @@ tailscale serve --bg --set-path /personal https+insecure://localhost:18792
 ```bash
 # Funnel = public internet access through Tailscale's edge network
 # Only use this if team members are NOT on your Tailnet
-tailscale funnel --bg https+insecure://localhost:18793
+tailscale funnel --bg http://localhost:18793
 ```
 
 **Accessing from your devices (all on the same Tailnet):**
@@ -998,9 +995,8 @@ docker exec -it nanobot-personal bash
 cd /opt/hyve
 git pull origin main
 
-# Rebuild
+# Rebuild (includes dashboard)
 docker build -t hyve-nanobot .
-cd dashboard && npm run build && cd ..
 
 # Restart
 docker compose -f docker-compose.prod.yml up -d --force-recreate

@@ -30,6 +30,12 @@ WORKDIR /app/bridge
 RUN npm install && npm run build
 WORKDIR /app
 
+# Build the React dashboard
+COPY dashboard/ dashboard/
+WORKDIR /app/dashboard
+RUN npm install && npm run build
+WORKDIR /app
+
 # Create config directory
 RUN mkdir -p /root/.nanobot
 
