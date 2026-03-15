@@ -57,8 +57,12 @@ export interface TaskBoardItem {
 export interface ConfigInfo {
   default_model: string
   agents: Record<string, { model: string | null; system_prompt: string }>
-  teams: Record<string, { agents: string[]; mode: string; approval: string }>
+  teams: Record<string, { leader: string; agents: string[]; approval_mode: string }>
 }
+
+// ── Config editing types ──────────────────────────────────
+
+export type ActiveTab = 'monitor' | 'config' | 'agent' | 'team'
 
 // ── WebSocket message types ───────────────────────────────
 

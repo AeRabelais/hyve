@@ -151,6 +151,7 @@ def create_app(
     store: EventStore,
     bus: MessageBus | None = None,
     config: Config | None = None,
+    config_path: Path | None = None,
     demo: bool = False,
 ) -> Starlette:
     """Create the Starlette dashboard app.
@@ -160,6 +161,7 @@ def create_app(
         store: EventStore for queries and derived state.
         bus: Optional MessageBus for sending commands.
         config: Optional Config for agent/team info.
+        config_path: Optional path to config.json (for config CRUD).
         demo: If True, inject mock data on startup for preview.
     """
     manager = ConnectionManager()
@@ -306,9 +308,9 @@ def create_app(
         teams_info = {}
         for name, tcfg in config.agents.teams.items():
             teams_info[name] = {
+                "leader": tcfg.leader,
                 "agents": tcfg.agents,
-                "mode": tcfg.mode,
-                "approval": tcfg.approval,
+                "approval_mode": tcfg.approval_mode,
             }
 
         return JSONResponse({
@@ -327,6 +329,139 @@ def create_app(
         await _handle_command(text, bus)
         return JSONResponse({"ok": True, "text": text})
 
+    # ── Config CRUD endpoints ──
+
+    def _resolve_config_path() -> Path:
+        """Resolve the config file path."""
+        if config_path is not None:
+            return config_path
+        from nanobot.config.loader import get_config_path
+        return get_config_path()
+
+    async def api_config_full(request: Request) -> JSONResponse:
+        """Read or update the full configuration file."""
+        from nanobot.config.loader import load_config, save_config
+        from nanobot.config.schema import Config as ConfigSchema
+
+        path = _resolve_config_path()
+
+        if request.method == "GET":
+            try:
+                cfg = load_config(path)
+                return JSONResponse(cfg.model_dump(by_alias=True))
+            except Exception as e:
+                logger.error("Dashboard: failed to load config: {}", e)
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        elif request.method == "PUT":
+            try:
+                body = await request.json()
+                cfg = ConfigSchema.model_validate(body)
+                save_config(cfg, path)
+                logger.info("Dashboard: config saved to {}", path)
+                return JSONResponse({"ok": True, "message": "Configuration saved. Restart to apply."})
+            except Exception as e:
+                logger.error("Dashboard: failed to save config: {}", e)
+                return JSONResponse({"error": str(e)}, status_code=400)
+
+        return JSONResponse({"error": "Method not allowed"}, status_code=405)
+
+    async def api_config_agents(request: Request) -> JSONResponse:
+        """Create or update an agent in the config."""
+        from nanobot.config.loader import load_config, save_config
+        from nanobot.config.schema import AgentConfig
+
+        path = _resolve_config_path()
+
+        try:
+            body = await request.json()
+            agent_id = body.pop("agentId", None) or body.pop("agent_id", None)
+            if not agent_id:
+                return JSONResponse({"error": "agentId is required"}, status_code=400)
+
+            # Validate agent config
+            agent_cfg = AgentConfig.model_validate(body)
+
+            # Load, modify, save
+            cfg = load_config(path)
+            cfg.agents.agents[agent_id] = agent_cfg
+            save_config(cfg, path)
+
+            logger.info("Dashboard: agent '{}' saved to config", agent_id)
+            return JSONResponse({"ok": True, "agentId": agent_id})
+        except Exception as e:
+            logger.error("Dashboard: failed to save agent: {}", e)
+            return JSONResponse({"error": str(e)}, status_code=400)
+
+    async def api_config_agent_detail(request: Request) -> JSONResponse:
+        """Delete an agent from config."""
+        from nanobot.config.loader import load_config, save_config
+
+        path = _resolve_config_path()
+        agent_id = request.path_params["agent_id"]
+
+        try:
+            cfg = load_config(path)
+            if agent_id not in cfg.agents.agents:
+                return JSONResponse({"error": f"Agent '{agent_id}' not found"}, status_code=404)
+
+            del cfg.agents.agents[agent_id]
+            save_config(cfg, path)
+
+            logger.info("Dashboard: agent '{}' removed from config", agent_id)
+            return JSONResponse({"ok": True})
+        except Exception as e:
+            logger.error("Dashboard: failed to delete agent: {}", e)
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    async def api_config_teams(request: Request) -> JSONResponse:
+        """Create or update a team in the config."""
+        from nanobot.config.loader import load_config, save_config
+        from nanobot.config.schema import TeamConfig
+
+        path = _resolve_config_path()
+
+        try:
+            body = await request.json()
+            team_name = body.pop("teamName", None) or body.pop("team_name", None)
+            if not team_name:
+                return JSONResponse({"error": "teamName is required"}, status_code=400)
+
+            # Validate team config
+            team_cfg = TeamConfig.model_validate(body)
+
+            # Load, modify, save
+            cfg = load_config(path)
+            cfg.agents.teams[team_name] = team_cfg
+            save_config(cfg, path)
+
+            logger.info("Dashboard: team '{}' saved to config", team_name)
+            return JSONResponse({"ok": True, "teamName": team_name})
+        except Exception as e:
+            logger.error("Dashboard: failed to save team: {}", e)
+            return JSONResponse({"error": str(e)}, status_code=400)
+
+    async def api_config_team_detail(request: Request) -> JSONResponse:
+        """Delete a team from config."""
+        from nanobot.config.loader import load_config, save_config
+
+        path = _resolve_config_path()
+        team_id = request.path_params["team_id"]
+
+        try:
+            cfg = load_config(path)
+            if team_id not in cfg.agents.teams:
+                return JSONResponse({"error": f"Team '{team_id}' not found"}, status_code=404)
+
+            del cfg.agents.teams[team_id]
+            save_config(cfg, path)
+
+            logger.info("Dashboard: team '{}' removed from config", team_id)
+            return JSONResponse({"ok": True})
+        except Exception as e:
+            logger.error("Dashboard: failed to delete team: {}", e)
+            return JSONResponse({"error": str(e)}, status_code=500)
+
     # ── Build routes ──
 
     routes: list = [
@@ -334,6 +469,11 @@ def create_app(
         Route("/api/state", api_state),
         Route("/api/events", api_events),
         Route("/api/config", api_config),
+        Route("/api/config/full", api_config_full, methods=["GET", "PUT"]),
+        Route("/api/config/agents", api_config_agents, methods=["POST"]),
+        Route("/api/config/agents/{agent_id}", api_config_agent_detail, methods=["DELETE"]),
+        Route("/api/config/teams", api_config_teams, methods=["POST"]),
+        Route("/api/config/teams/{team_id}", api_config_team_detail, methods=["DELETE"]),
         Route("/api/command", api_command, methods=["POST"]),
     ]
 

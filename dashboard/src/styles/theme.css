@@ -592,3 +592,595 @@ body {
 
 .filter-input:focus { border-color: var(--cyan); }
 .filter-input::placeholder { color: var(--text-3); }
+
+/* ── Tab Bar ── */
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  padding: 0 8px;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.tab-item:hover { color: var(--text-1); }
+.tab-item.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+.tab-icon { font-size: 13px; }
+
+/* ── Config Editor / Forms ── */
+.config-editor {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.config-header h2 {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-0);
+}
+
+/* ── Toast ── */
+.config-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.config-toast.success {
+  background: var(--green-dim);
+  color: var(--green);
+  border-bottom: 1px solid rgba(34,197,94,0.2);
+}
+
+.config-toast.error {
+  background: var(--red-dim);
+  color: var(--red);
+  border-bottom: 1px solid rgba(239,68,68,0.2);
+}
+
+.toast-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0.6;
+  padding: 0 4px;
+}
+
+.toast-close:hover { opacity: 1; }
+
+/* ── Sections ── */
+.config-section {
+  border-bottom: 1px solid var(--border);
+}
+
+.config-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 24px;
+  background: var(--bg-1);
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.config-section-header:hover { background: var(--bg-2); }
+
+.config-section-title {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-0);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.config-chevron {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-3);
+  width: 14px;
+}
+
+.config-section-body {
+  padding: 16px 24px;
+  background: var(--bg-0);
+}
+
+.subsection-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 16px 0 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Form Fields ── */
+.cfg-field {
+  margin-bottom: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cfg-label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin-bottom: 4px;
+}
+
+.cfg-hint {
+  font-weight: 400;
+  color: var(--text-3);
+  margin-left: 8px;
+  font-size: 10px;
+}
+
+.cfg-required {
+  color: var(--orange);
+  margin-left: 2px;
+}
+
+.cfg-input {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-0);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.cfg-input:focus { border-color: var(--cyan); }
+.cfg-input::placeholder { color: var(--text-3); }
+.cfg-input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cfg-input-sm { max-width: 240px; }
+.cfg-input-xs { max-width: 120px; }
+
+.cfg-select {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-0);
+  outline: none;
+  cursor: pointer;
+  min-width: 140px;
+}
+
+.cfg-select:focus { border-color: var(--cyan); }
+
+.cfg-textarea {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-0);
+  outline: none;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.cfg-textarea:focus { border-color: var(--cyan); }
+.cfg-textarea::placeholder { color: var(--text-3); }
+
+.field-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+/* ── Toggle ── */
+.cfg-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  padding: 0;
+}
+
+.cfg-toggle.on {
+  background: var(--cyan-dim);
+  border-color: var(--cyan);
+}
+
+.cfg-toggle-knob {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-3);
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.cfg-toggle.on .cfg-toggle-knob {
+  transform: translateX(16px);
+  background: var(--cyan);
+}
+
+/* ── Password Field ── */
+.password-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-field .cfg-input {
+  padding-right: 30px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 6px;
+  background: none;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px;
+}
+
+.password-toggle:hover { color: var(--text-1); }
+
+/* ── Providers Grid ── */
+.providers-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.provider-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 200px;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: background 0.12s;
+}
+
+.provider-row:hover { background: var(--bg-2); }
+.provider-row.configured { background: rgba(34,211,238,0.04); }
+
+.provider-name {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.provider-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+  flex-shrink: 0;
+}
+
+.provider-dot.on { background: var(--green); }
+
+/* ── MCP Editor ── */
+.mcp-editor { display: flex; flex-direction: column; gap: 12px; }
+.mcp-empty { font-family: var(--mono); font-size: 11px; color: var(--text-3); padding: 8px 0; }
+
+.mcp-server {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mcp-server-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.mcp-server-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cyan);
+}
+
+.mcp-server-type {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-3);
+  padding: 1px 6px;
+  background: var(--bg-3);
+  border-radius: 3px;
+}
+
+.mcp-server-body { padding: 12px 14px; }
+
+.mcp-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.mcp-add .cfg-input { flex: 1; }
+
+/* ── Channels Editor ── */
+.channels-editor { display: flex; flex-direction: column; gap: 2px; }
+
+.channel-row {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.channel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-2);
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.channel-header:hover { background: var(--bg-3); }
+
+.channel-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-0);
+  flex: 1;
+  text-align: left;
+}
+
+.channel-body { padding: 12px 14px; }
+
+/* ── Config List (agents/teams summary) ── */
+.config-list { display: flex; flex-direction: column; gap: 4px; }
+
+.config-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border-radius: 6px;
+}
+
+.config-list-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cyan);
+  min-width: 100px;
+}
+
+.config-list-detail {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border: none;
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--cyan);
+  color: var(--bg-0);
+}
+
+.btn-primary:hover:not(:disabled) { opacity: 0.85; }
+
+.btn-secondary {
+  background: var(--bg-3);
+  color: var(--text-0);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) { background: var(--border); }
+
+.btn-danger {
+  background: var(--red-dim);
+  color: var(--red);
+}
+
+.btn-danger:hover:not(:disabled) { background: rgba(239,68,68,0.2); }
+
+.btn-xs { padding: 3px 8px; font-size: 10px; }
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--cyan);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.btn-link:hover { opacity: 0.8; }
+
+/* ── Config Footer ── */
+.config-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  background: var(--bg-1);
+  border-top: 1px solid var(--border);
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+
+.config-footer .config-hint {
+  margin-left: auto;
+}
+
+/* ── Form Banner (edit existing) ── */
+.form-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.form-body { padding: 16px 24px; }
+
+/* ── Skill Tags ── */
+.skill-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.skill-tag {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg-3);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.skill-tag:hover { border-color: var(--border-hover); color: var(--text-1); }
+
+.skill-tag.active {
+  background: var(--cyan-dim);
+  color: var(--cyan);
+  border-color: rgba(34,211,238,0.3);
+}
+
+/* ── Team Member Tags ── */
+.team-members-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.team-member-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--purple-dim);
+  color: var(--purple);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.tag-remove {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  opacity: 0.6;
+  padding: 0 2px;
+}
+
+.tag-remove:hover { opacity: 1; }
+
+.approval-descriptions {
+  margin-top: 4px;
+}

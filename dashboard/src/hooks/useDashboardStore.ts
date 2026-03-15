@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AgentState, ChainState, ConfigInfo, CronJobState, HeartbeatState, NanobotEvent, TaskBoardItem } from '../types'
+import type { ActiveTab, AgentState, ChainState, ConfigInfo, CronJobState, HeartbeatState, NanobotEvent, TaskBoardItem } from '../types'
 
 const MAX_EVENTS = 200
 
@@ -20,6 +20,7 @@ interface DashboardState {
   events: NanobotEvent[]
 
   // UI state
+  activeTab: ActiveTab
   selectedAgent: string | null
   selectedChain: string | null
   eventFilter: string
@@ -34,6 +35,7 @@ interface DashboardState {
     recent_events: NanobotEvent[]
   }) => void
   addEvent: (event: NanobotEvent) => void
+  setActiveTab: (tab: ActiveTab) => void
   setConfig: (config: ConfigInfo) => void
   setSelectedAgent: (id: string | null) => void
   setSelectedChain: (id: string | null) => void
@@ -53,6 +55,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   events: [],
 
+  activeTab: 'monitor',
   selectedAgent: null,
   selectedChain: null,
   eventFilter: '',
@@ -152,6 +155,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       return { events, agents, chains, heartbeat, cronJobs, taskBoard }
     }),
 
+  setActiveTab: (tab) => set({ activeTab: tab }),
   setConfig: (config) => set({ config }),
   setSelectedAgent: (id) => set({ selectedAgent: id }),
   setSelectedChain: (id) => set({ selectedChain: id }),
