@@ -247,10 +247,10 @@ Initialize the config for each instance:
 
 ```bash
 # Personal instance
-NANOBOT_HOME=~/.nanobot-personal nanobot onboard
+docker run --rm -v ~/.nanobot-personal:/root/.nanobot hyve-nanobot onboard
 
 # Symby instance
-NANOBOT_HOME=~/.nanobot-symby nanobot onboard
+docker run --rm -v ~/.nanobot-symby:/root/.nanobot hyve-nanobot onboard
 ```
 
 Then edit `~/.nanobot-personal/config.json`:
